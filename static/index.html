@@ -187,9 +187,9 @@ async function callExecute(prompt) {
   const typingEl = appendTyping();
 
   const isContinue = CONTINUE_WORDS.has(prompt.trim().toLowerCase());
-  const bodyPayload = isContinue
-    ? { prompt, last_prompt: lastExecutePrompt }
-    : { prompt, last_prompt: "" };
+  // Always send last_prompt so backend can merge details or use original for "continue"
+  const bodyPayload = { prompt, last_prompt: lastExecutePrompt };
+  // Only update lastExecutePrompt for real (non-continue) prompts
   if (!isContinue) lastExecutePrompt = prompt;
 
   try {
