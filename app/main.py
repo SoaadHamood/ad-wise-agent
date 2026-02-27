@@ -43,6 +43,7 @@ INDEX_HTML = STATIC_DIR / "index.html"
 # REQUIRED: execute gets ONLY {"prompt": "..."}
 class ExecuteIn(BaseModel):
     prompt: str
+    last_prompt: Optional[str] = None  # used to remember original input when user types "continue"
 
 
 # Wizard UI endpoint input
@@ -71,7 +72,7 @@ def execute(inp: ExecuteIn):
                 rag_cat = line.split(":", 1)[1].strip()
                 break
 
-        agent_result = run_agent(prompt, category_filter=rag_cat)
+        agent_result = run_agent(prompt, category_filter=rag_cat, last_prompt=inp.last_prompt or "")
 
         return {
             "status": agent_result.get("status", "ok"),
