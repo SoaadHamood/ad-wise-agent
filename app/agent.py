@@ -362,7 +362,10 @@ def run_agent(user_prompt: str, category_filter: str = "", last_prompt: str = ""
 
         from_wizard = ("RAG Category Filter:" in prompt) or ("Category:" in prompt) or ("Task:" in prompt)
 
-        if from_wizard:
+        # If last_prompt is set and this is not "continue", user is adding details — generate immediately
+        is_detail_turn = bool(last_prompt) and not _is_continue_signal(prompt) and not from_wizard
+
+        if from_wizard or is_detail_turn:
             clarify, reason = False, ""
         else:
             clarify, reason = _should_clarify(prompt)
