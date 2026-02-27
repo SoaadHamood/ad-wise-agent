@@ -115,6 +115,7 @@
 let convState = null;
 let busy = false;
 let lastWizardAgentPrompt = "";
+let lastExecutePrompt = "";  // remembers last real prompt so "continue" knows what product to use
 
 window.onload = () => callChat("hi", null);
 
@@ -177,23 +178,38 @@ function chooseOption(id, label) {
   callChat(id, convState);
 }
 
+const CONTINUE_WORDS = new Set(["continue","just continue","go ahead","generate anyway","proceed","yes continue","yes","ok","sure"]);
+
 async function callExecute(prompt) {
   busy = true; updateNavButtons();
   document.getElementById("send-btn").disabled = true;
   document.getElementById("run-btn").disabled = true;
   const typingEl = appendTyping();
+
+  const isContinue = CONTINUE_WORDS.has(prompt.trim().toLowerCase());
+  const bodyPayload = isContinue
+    ? { prompt, last_prompt: lastExecutePrompt }
+    : { prompt, last_prompt: "" };
+  if (!isContinue) lastExecutePrompt = prompt;
+
   try {
     const res = await fetch("/api/execute", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt })
+      body: JSON.stringify(bodyPayload)
     });
     if (!res.ok) { const t = await res.text(); throw new Error("HTTP " + res.status + " — " + t.slice(0,300)); }
     const data = await res.json();
     typingEl.remove();
     if (data.status === "error") { appendBotBubble("❌ Error: " + (data.error || "Unknown error")); return; }
     const resultText = (data.response || "").trim();
-    appendResult(resultText || "(empty response)", data.steps);
-    setTimeout(() => appendBotBubble("✅ Done! You can run another prompt."), 120);
+    const looksLikeClarify = resultText.includes("type **continue**") || resultText.includes("Could you add");
+    if (looksLikeClarify) {
+      appendBotBubble(resultText);
+    } else {
+      appendResult(resultText || "(empty response)", data.steps);
+      lastExecutePrompt = "";
+      setTimeout(() => appendBotBubble("✅ Done! You can run another prompt."), 120);
+    }
   } catch (err) { typingEl.remove(); appendBotBubble("❌ Error: " + err.message); }
   finally { busy = false; updateNavButtons(); document.getElementById("send-btn").disabled = false; document.getElementById("run-btn").disabled = false; scrollBottom(); }
 }
