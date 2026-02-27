@@ -82,10 +82,19 @@ _STOPWORDS = {
 
 # Intent hints for free text (wizard prompts skip this guard)
 _INTENT_HINTS = {"write", "generate", "create", "headline", "keywords", "ad", "listing", "product"}
-_PRODUCT_HINTS = {"bottle","shoe","watch","backpack","headphones","laptop","charger","camera","mug","cup","speaker","mouse","keyboard","skincare","perfume","dress"}
+_PRODUCT_HINTS = {
+    "bottle","shoe","shoes","watch","backpack","headphones","laptop","charger","camera",
+    "mug","cup","speaker","mouse","keyboard","skincare","perfume","dress","book","books",
+    "shirt","pants","jacket","bag","case","cover","stand","mat","pad","ring","bracelet",
+    "necklace","earring","pillow","blanket","towel","lamp","chair","desk","pen","notebook",
+    "tablet","phone","cable","adapter","battery","brush","comb","razor","serum",
+    "cream","lotion","shampoo","soap","candle","toy","game","ball","bike","tent",
+    "knife","pot","pan","tray","rack","shelf","mirror","clock","wallet","belt","hat","cap",
+    "gloves","socks","scarf","umbrella","sunglasses","helmet","lock","drill","vacuum","blender",
+}
 
-MIN_PROMPT_CHARS_FOR_AGENT = 12
-MIN_TOKENS_FOR_AGENT = 3
+MIN_PROMPT_CHARS_FOR_AGENT = 4   # even a single word is enough
+MIN_TOKENS_FOR_AGENT = 1         # one real word is sufficient
 
 
 def _rewrite_query(prompt: str) -> str:
@@ -149,9 +158,13 @@ def _extract_allowed_terms(condensed_ctx: str, max_terms: int = 12) -> List[str]
 
 def _build_messages(prompt: str, condensed_ctx: str, allowed_terms: List[str], mode: str) -> Tuple[str, str]:
     system_msg = (
-        "You are Ad-Wise, an expert performance copywriter. "
+        "You are Ad-Wise, an expert performance copywriter specializing in Amazon and e-commerce ads. "
         "Write high-converting ad copy using the provided inspiration examples. "
-        "Be concise, avoid fluff, and follow user constraints strictly."
+        "Be specific, vivid, and benefit-focused — never repeat the same idea across bullets. "
+        "Each bullet must highlight a DIFFERENT benefit or feature. "
+        "Even with minimal product info, infer realistic benefits from the product type and category. "
+        "Avoid generic filler like 'a great product' or restating the product name five times. "
+        "Follow user constraints strictly."
     )
 
     allowed_block = ""
@@ -263,7 +276,7 @@ def _should_clarify(prompt: str) -> Tuple[bool, str]:
     if not p:
         return True, "empty"
 
-    # User explicitly chose to continue with minimal input — never ask again
+    # User explicitly chose to continue — never ask again
     if _is_continue_signal(p):
         return False, ""
 
@@ -276,6 +289,14 @@ def _should_clarify(prompt: str) -> Tuple[bool, str]:
 
     has_intent = any(h in p_l for h in _INTENT_HINTS)
     has_product = any(h in p_l for h in _PRODUCT_HINTS) or ("product:" in p_l)
+
+    # 4+ meaningful words = the user described something — just generate
+    if len(meaningful) >= 4:
+        return False, ""
+
+    # 2-3 words with a known product word — good enough
+    if has_product and len(meaningful) >= 2:
+        return False, ""
 
     if has_intent and not has_product:
         return True, "missing_product"
