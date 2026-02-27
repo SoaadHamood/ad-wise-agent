@@ -310,7 +310,7 @@ def _clarification_response(reason: str = "", original_prompt: str = "") -> str:
     )
 
 
-def run_agent(user_prompt: str, category_filter: str = "") -> Dict[str, Any]:
+def run_agent(user_prompt: str, category_filter: str = "", last_prompt: str = "") -> Dict[str, Any]:
     steps: List[Dict[str, Any]] = []
 
     try:
@@ -347,10 +347,13 @@ def run_agent(user_prompt: str, category_filter: str = "") -> Dict[str, Any]:
         if clarify:
             return {"status": "ok", "error": None, "response": _clarification_response(reason, prompt), "steps": steps}
 
-        # If the user typed "continue" (or equivalent), generate with a generic prompt
-        # so the LLM still has something to work with
+        # If the user typed "continue", use their original product word instead of a generic prompt
         if _is_continue_signal(prompt):
-            prompt = "Product: (unspecified) — write a general high-converting ad"
+            original = (last_prompt or "").strip()
+            if original and not _is_continue_signal(original):
+                prompt = f"Product: {original} — write a full high-converting ad"
+            else:
+                prompt = "Product: (unspecified product) — write a general high-converting ad"
             mode = _MODE_FULL
 
         search_query = _rewrite_query(prompt)
