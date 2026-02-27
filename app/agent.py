@@ -272,11 +272,18 @@ def _is_continue_signal(prompt: str) -> bool:
 
 
 def _should_clarify(prompt: str) -> Tuple[bool, str]:
+    """
+    Clarification logic:
+    - Always ask once for more details on free-form input (not wizard, not continue)
+    - If user already provided extra details (last_prompt was short, current is longer) → generate
+    - If user typed "continue" → generate with original product
+    - Wizard prompts → never ask
+    """
     p = (prompt or "").strip()
     if not p:
         return True, "empty"
 
-    # User explicitly chose to continue — never ask again
+    # User explicitly chose to continue — generate immediately
     if _is_continue_signal(p):
         return False, ""
 
@@ -290,24 +297,25 @@ def _should_clarify(prompt: str) -> Tuple[bool, str]:
     has_intent = any(h in p_l for h in _INTENT_HINTS)
     has_product = any(h in p_l for h in _PRODUCT_HINTS) or ("product:" in p_l)
 
-    # 4+ meaningful words = the user described something — just generate
-    if len(meaningful) >= 4:
+    # If user gave a detailed description (8+ words) — they already provided details, generate
+    if len(meaningful) >= 8:
         return False, ""
 
-    # 2-3 words with a known product word — good enough
-    if has_product and len(meaningful) >= 2:
+    # If prompt looks like a proper structured description (has adjectives/specs) — generate
+    has_descriptor = bool(re.search(
+        r"(color|colour|size|material|made|designed|features?|includes?|with|for|about|"
+        r"ml|oz|liter|litre|inch|cm|mm|kg|lb|red|blue|green|black|white|yellow|pink|"
+        r"wooden|plastic|metal|steel|leather|cotton|organic|waterproof|wireless|portable)",
+        p_l
+    ))
+    if has_descriptor and len(meaningful) >= 4:
         return False, ""
 
+    # Everything else: ask once for more details
     if has_intent and not has_product:
         return True, "missing_product"
 
-    if len(meaningful) < MIN_TOKENS_FOR_AGENT:
-        return (False, "") if has_product else (True, "too_few_tokens")
-
-    if not has_intent and not has_product:
-        return True, "no_intent_or_product"
-
-    return False, ""
+    return True, "needs_details"
 
 
 def _clarification_response(reason: str = "", original_prompt: str = "") -> str:
@@ -322,12 +330,12 @@ def _clarification_response(reason: str = "", original_prompt: str = "") -> str:
             f"Or type **continue** and I'll write an ad based on {product_hint} as-is."
         )
     return (
-        f"It looks like your description is a bit short. Could you add more details?\n\n"
+        f"Got it — **{original_prompt}**! To write the best ad, could you share a few more details?\n\n"
         f"For example:\n"
-        f"• What is the product?\n"
-        f"• What makes it special?\n"
-        f"• Who is it for?\n\n"
-        f"Or type **continue** and I'll generate an ad based on {product_hint} right away."
+        f"• Key features (material, size, color, capacity)\n"
+        f"• What makes it unique or better than competitors?\n"
+        f"• Who is the target audience?\n\n"
+        f"Or type **continue** to generate an ad based on \"{original_prompt}\" right away."
     )
 
 
@@ -368,7 +376,7 @@ def run_agent(user_prompt: str, category_filter: str = "", last_prompt: str = ""
         if clarify:
             return {"status": "ok", "error": None, "response": _clarification_response(reason, prompt), "steps": steps}
 
-        # If the user typed "continue", use their original product word instead of a generic prompt
+        # Handle "continue" — use the original product as the prompt
         if _is_continue_signal(prompt):
             original = (last_prompt or "").strip()
             if original and not _is_continue_signal(original):
@@ -376,6 +384,14 @@ def run_agent(user_prompt: str, category_filter: str = "", last_prompt: str = ""
             else:
                 prompt = "Product: (unspecified product) — write a general high-converting ad"
             mode = _MODE_FULL
+
+        # Handle extra details — user replied to clarification with more info
+        # Merge: "last_prompt (original product) + current prompt (new details)"
+        elif last_prompt and not _is_continue_signal(last_prompt) and prompt != last_prompt:
+            original = (last_prompt or "").strip()
+            # Only merge if last_prompt was the short original and current adds new info
+            if len(original.split()) <= 6 and len(prompt.split()) >= 2:
+                prompt = f"Product: {original}. Additional details: {prompt}"
 
         search_query = _rewrite_query(prompt)
         ctx, trace = retrieve_examples(search_query, category_filter=category_filter)
