@@ -187,10 +187,11 @@ async function callExecute(prompt) {
   const typingEl = appendTyping();
 
   const isContinue = CONTINUE_WORDS.has(prompt.trim().toLowerCase());
-  // Always send last_prompt so backend can merge details or use original for "continue"
+  // Always send last_prompt so backend can merge or use original for "continue"
   const bodyPayload = { prompt, last_prompt: lastExecutePrompt };
-  // Only update lastExecutePrompt for real (non-continue) prompts
-  if (!isContinue) lastExecutePrompt = prompt;
+  // Only set lastExecutePrompt on the FIRST prompt (when it's empty).
+  // On follow-up detail turns we keep the original so backend can merge correctly.
+  if (!isContinue && !lastExecutePrompt) lastExecutePrompt = prompt;
 
   try {
     const res = await fetch("/api/execute", {
