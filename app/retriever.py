@@ -63,6 +63,23 @@ def _get_index():
     return _index
 
 
+def preload_model() -> None:
+    """
+    Called once at application startup (from main.py lifespan).
+    Downloads / loads the sentence-transformer model into memory so the
+    first real request does NOT trigger a slow cold-load.
+    """
+    global _model
+    if _model is None:
+        import logging
+        logging.getLogger("retriever").info(
+            "Pre-loading embedding model '%s' …", EMBED_MODEL_NAME
+        )
+        from sentence_transformers import SentenceTransformer
+        _model = SentenceTransformer(EMBED_MODEL_NAME)
+        logging.getLogger("retriever").info("Embedding model loaded ✓")
+
+
 def _normalize_metadata(md: Any) -> Dict[str, Any]:
     if md is None:
         return {}
