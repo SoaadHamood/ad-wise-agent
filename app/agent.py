@@ -251,10 +251,22 @@ def _repair_format(product_prompt: str, draft: str, mode: str) -> Tuple[str, Dic
     return llm_generate_ad(system_msg, user_msg)
 
 
+_CONTINUE_PHRASES = {"continue", "just continue", "go ahead", "generate anyway", "proceed", "do it anyway", "yes continue", "yes", "ok", "sure"}
+
+
+def _is_continue_signal(prompt: str) -> bool:
+    return (prompt or "").strip().lower() in _CONTINUE_PHRASES
+
+
 def _should_clarify(prompt: str) -> Tuple[bool, str]:
     p = (prompt or "").strip()
     if not p:
         return True, "empty"
+
+    # User explicitly chose to continue with minimal input — never ask again
+    if _is_continue_signal(p):
+        return False, ""
+
     if len(p) < MIN_PROMPT_CHARS_FOR_AGENT:
         return True, "too_short"
 
@@ -277,22 +289,24 @@ def _should_clarify(prompt: str) -> Tuple[bool, str]:
     return False, ""
 
 
-def _clarification_response(reason: str = "") -> str:
+def _clarification_response(reason: str = "", original_prompt: str = "") -> str:
+    product_hint = f'"{original_prompt}"' if original_prompt else "your input"
     if reason == "missing_product":
         return (
-            "Sure — what product should I write the ad copy for?\n\n"
-            "Try:\n"
-            "Product: ...\n"
-            "Category: ...\n"
-            "Constraints: ... (optional)\n"
-            "Task: Full ad / headline only / 5 keywords\n"
+            f"I'd love to help! Could you tell me more about the product?\n\n"
+            f"Try adding:\n"
+            f"• Product name / model\n"
+            f"• Key features (material, size, color, specs)\n"
+            f"• Target audience or unique selling point\n\n"
+            f"Or type **continue** and I'll write an ad based on {product_hint} as-is."
         )
     return (
-        "Hi! Please describe the product and what you want:\n\n"
-        "Product: ...\n"
-        "Category: ...\n"
-        "Constraints: ... (optional)\n"
-        "Task: Full ad / headline only / 5 keywords\n"
+        f"It looks like your description is a bit short. Could you add more details?\n\n"
+        f"For example:\n"
+        f"• What is the product?\n"
+        f"• What makes it special?\n"
+        f"• Who is it for?\n\n"
+        f"Or type **continue** and I'll generate an ad based on {product_hint} right away."
     )
 
 
@@ -331,7 +345,13 @@ def run_agent(user_prompt: str, category_filter: str = "") -> Dict[str, Any]:
         })
 
         if clarify:
-            return {"status": "ok", "error": None, "response": _clarification_response(reason), "steps": steps}
+            return {"status": "ok", "error": None, "response": _clarification_response(reason, prompt), "steps": steps}
+
+        # If the user typed "continue" (or equivalent), generate with a generic prompt
+        # so the LLM still has something to work with
+        if _is_continue_signal(prompt):
+            prompt = "Product: (unspecified) — write a general high-converting ad"
+            mode = _MODE_FULL
 
         search_query = _rewrite_query(prompt)
         ctx, trace = retrieve_examples(search_query, category_filter=category_filter)
