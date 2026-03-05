@@ -88,6 +88,26 @@
     #send-btn { background:var(--surface); color:var(--text2); border:1.5px solid var(--border); border-radius:12px; width:44px; height:44px; font-size:1.1rem; cursor:pointer; transition:all .18s; display:grid; place-items:center; flex-shrink:0; }
     #send-btn:hover { border-color:var(--cyan); color:var(--cyan); background:var(--cyan-lt); }
     #send-btn:disabled { opacity:.4; cursor:not-allowed; }
+  /* ── Analyze Modal ── */
+  .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:100; align-items:center; justify-content:center; }
+  .modal-overlay.open { display:flex; }
+  .modal-box { background:#fff; border-radius:20px; padding:28px; width:min(520px,92vw); box-shadow:0 20px 60px rgba(0,0,0,0.2); display:flex; flex-direction:column; gap:16px; }
+  .modal-title { font-size:1.1rem; font-weight:800; color:#1f0812; display:flex; align-items:center; gap:8px; }
+  .modal-label { font-size:.85rem; font-weight:700; color:#6b2040; margin-bottom:4px; }
+  .modal-textarea { width:100%; border:1.5px solid #f0b8cc; border-radius:10px; padding:10px 12px; font-family:var(--font); font-size:.88rem; resize:vertical; min-height:90px; outline:none; }
+  .modal-textarea:focus { border-color:#6c3ff5; box-shadow:0 0 0 3px rgba(108,63,245,.12); }
+  .csv-drop { border:2px dashed #d8b4fe; border-radius:12px; padding:18px; text-align:center; cursor:pointer; color:#7c3aed; font-size:.85rem; font-weight:600; transition:all .2s; background:#faf5ff; }
+  .csv-drop:hover,.csv-drop.drag { border-color:#6c3ff5; background:#ede9fe; }
+  .csv-drop input { display:none; }
+  .csv-filename { font-size:.78rem; color:#7c3aed; margin-top:6px; }
+  .modal-hint { font-size:.73rem; color:#9ca3af; }
+  .modal-actions { display:flex; gap:10px; justify-content:flex-end; }
+  .modal-cancel { background:#fff; border:1.5px solid #e5e7eb; color:#6b7280; padding:8px 18px; border-radius:10px; font-family:var(--font); font-size:.85rem; font-weight:600; cursor:pointer; }
+  .modal-analyze-btn { background:linear-gradient(135deg,#6c3ff5,#a855f7); color:#fff; border:none; padding:8px 22px; border-radius:10px; font-family:var(--font); font-size:.88rem; font-weight:800; cursor:pointer; box-shadow:0 4px 16px rgba(108,63,245,.35); }
+  .modal-analyze-btn:disabled { opacity:.45; cursor:not-allowed; }
+  .analysis-report { margin:8px 24px; background:#faf5ff; border:1.5px solid #d8b4fe; border-radius:var(--radius); overflow:hidden; animation:fadeIn .3s ease; }
+  .analysis-header { background:linear-gradient(90deg,#ede9fe,#faf5ff); padding:8px 18px; font-size:.78rem; font-weight:700; color:#6c3ff5; letter-spacing:.06em; text-transform:uppercase; border-bottom:1px solid #e9d5ff; display:flex; align-items:center; gap:8px; }
+  .analysis-pre { font-family:var(--mono); font-size:.82rem; line-height:1.7; padding:16px 18px; white-space:pre-wrap; word-break:break-word; color:#1f0812; }
   </style>
 </head>
 <body>
@@ -100,6 +120,7 @@
   <div class="header-right">
     <button id="back-btn" class="nav-btn" onclick="goBack()">← Back</button>
     <button class="nav-btn" onclick="restart()">↺ Restart</button>
+    <button class="nav-btn" onclick="openAnalyzeModal()" style="background:linear-gradient(135deg,#6c3ff5,#a855f7);color:#fff;border-color:#6c3ff5;">📊 Analyze Ad</button>
   </div>
 </header>
 
@@ -115,14 +136,39 @@
 let convState = null;
 let busy = false;
 let lastWizardAgentPrompt = "";
+let lastExecutePrompt = "";  // remembers original product for "continue" flow
+let csvParsedText = "";      // stores CSV content parsed client-side
 
-window.onload = () => callChat("hi", null);
+window.onload = () => {
+  _initDropZone();  // attach CSV drag-drop now that modal HTML exists
+  convState = { step: "MENU" };
+  appendBotBubble(
+    "👋 Welcome to **Ad-Wise**!\n\nI help you craft high-converting ad copy grounded in real product listing data.\n\nChoose an option:"
+  );
+  appendOptions([
+    { id: "full_ad",       label: "✍️  Create Full Ad",         desc: "Headline + 5 bullets + description + keywords + publishing tips" },
+    { id: "headline_only", label: "🏷️  Create Headline Only",   desc: "One high-converting headline line" },
+    { id: "keywords_5",    label: "🔑  Get 5 Must-Use Keywords", desc: "Exactly 5 keywords/phrases to include in the headline" },
+    { id: "analyze_ad",    label: "📊  Analyze Ad Performance",  desc: "Paste your metrics or upload a CSV — get insights + a better headline" },
+  ], true);
+  updateNavButtons();
+};
 
 function restart() {
   document.getElementById("chat").innerHTML = "";
-  convState = null;
+  convState = { step: "MENU" };
   lastWizardAgentPrompt = "";
-  callChat("hi", null);
+  lastExecutePrompt = "";
+  appendBotBubble(
+    "👋 Welcome to **Ad-Wise**!\n\nI help you craft high-converting ad copy grounded in real product listing data.\n\nChoose an option:"
+  );
+  appendOptions([
+    { id: "full_ad",       label: "✍️  Create Full Ad",         desc: "Headline + 5 bullets + description + keywords + publishing tips" },
+    { id: "headline_only", label: "🏷️  Create Headline Only",   desc: "One high-converting headline line" },
+    { id: "keywords_5",    label: "🔑  Get 5 Must-Use Keywords", desc: "Exactly 5 keywords/phrases to include in the headline" },
+    { id: "analyze_ad",    label: "📊  Analyze Ad Performance",  desc: "Paste your metrics or upload a CSV — get insights + a better headline" },
+  ], true);
+  updateNavButtons();
 }
 
 function canGoBack() {
@@ -148,10 +194,17 @@ function sendMessageWizard() {
 }
 
 function runAgentExecute() {
+  // Safety: if busy is stuck (e.g. after a failed request), reset it
+  if (busy) {
+    busy = false;
+    document.getElementById("run-btn").disabled = false;
+    document.getElementById("send-btn").disabled = false;
+    updateNavButtons();
+  }
   const inp = document.getElementById("user-input");
   const typed = inp.value.trim();
   const promptToRun = typed || lastWizardAgentPrompt;
-  if (!promptToRun || busy) {
+  if (!promptToRun) {
     appendBotBubble("⚠️ Please type a prompt, or complete the Wizard once so I can use your selections.");
     return;
   }
@@ -177,25 +230,156 @@ function chooseOption(id, label) {
   callChat(id, convState);
 }
 
+const CONTINUE_WORDS = new Set(["continue","just continue","go ahead","generate anyway","proceed","yes continue","yes","ok","sure"]);
+
 async function callExecute(prompt) {
   busy = true; updateNavButtons();
   document.getElementById("send-btn").disabled = true;
   document.getElementById("run-btn").disabled = true;
   const typingEl = appendTyping();
+
+  const isContinue = CONTINUE_WORDS.has(prompt.trim().toLowerCase());
+  const bodyPayload = { prompt, last_prompt: lastExecutePrompt };
+  if (!isContinue && !lastExecutePrompt) lastExecutePrompt = prompt;
+
   try {
     const res = await fetch("/api/execute", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt })
+      body: JSON.stringify(bodyPayload)
     });
     if (!res.ok) { const t = await res.text(); throw new Error("HTTP " + res.status + " — " + t.slice(0,300)); }
     const data = await res.json();
     typingEl.remove();
     if (data.status === "error") { appendBotBubble("❌ Error: " + (data.error || "Unknown error")); return; }
     const resultText = (data.response || "").trim();
-    appendResult(resultText || "(empty response)", data.steps);
-    setTimeout(() => appendBotBubble("✅ Done! You can run another prompt."), 120);
+    const looksLikeClarify = resultText.includes("type **continue**") || resultText.includes("Could you add") || resultText.includes("could you share");
+    if (looksLikeClarify) {
+      appendBotBubble(resultText);
+    } else {
+      appendResult(resultText || "(empty response)", data.steps);
+      lastExecutePrompt = "";
+      setTimeout(() => {
+        convState = { step: "MENU" };
+        appendBotBubble("✅ Done! What would you like to do next?");
+        appendOptions([
+          { id: "full_ad",       label: "✍️  Create Full Ad",         desc: "Headline + 5 bullets + description + keywords + publishing tips" },
+          { id: "headline_only", label: "🏷️  Create Headline Only",   desc: "One high-converting headline line" },
+          { id: "keywords_5",    label: "🔑  Get 5 Must-Use Keywords", desc: "Exactly 5 keywords/phrases to include in the headline" },
+          { id: "analyze_ad",    label: "📊  Analyze Ad Performance",  desc: "Paste your metrics or upload a CSV — get insights + a better headline" },
+        ], true);
+        updateNavButtons();
+      }, 300);
+    }
   } catch (err) { typingEl.remove(); appendBotBubble("❌ Error: " + err.message); }
   finally { busy = false; updateNavButtons(); document.getElementById("send-btn").disabled = false; document.getElementById("run-btn").disabled = false; scrollBottom(); }
+}
+
+// ── Analyze Modal ──────────────────────────────────────────────────────
+function openAnalyzeModal() {
+  document.getElementById("analyze-modal").classList.add("open");
+  document.getElementById("analyze-input").focus();
+}
+function closeAnalyzeModal() {
+  document.getElementById("analyze-modal").classList.remove("open");
+  document.getElementById("analyze-input").value = "";
+  document.getElementById("csv-filename").textContent = "";
+  document.getElementById("csv-file-input").value = "";
+  csvParsedText = "";
+}
+// (modal close-on-backdrop moved to _initDropZone below)
+
+function handleCsvSelect(input) {
+  const file = input.files[0];
+  if (!file) return;
+  document.getElementById("csv-filename").textContent = "📄 " + file.name;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const lines = e.target.result.split("\n").slice(0, 51);
+    csvParsedText = "\nCSV DATA:\n" + lines.join("\n");
+  };
+  reader.readAsText(file);
+}
+
+// CSV drag & drop — attached after DOM is ready to avoid null crash
+function _initDropZone() {
+  // Close modal when clicking backdrop — safe here because DOM is ready
+  const modal = document.getElementById("analyze-modal");
+  if (modal) modal.addEventListener("click", function(e) { if (e.target === this) closeAnalyzeModal(); });
+
+  const dropZone = document.getElementById("csv-drop-zone");
+  if (!dropZone) return;
+  dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("drag"); });
+  dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag"));
+  dropZone.addEventListener("drop", e => {
+    e.preventDefault(); dropZone.classList.remove("drag");
+    const file = e.dataTransfer.files[0];
+    if (file && file.name.endsWith(".csv")) {
+      document.getElementById("csv-filename").textContent = "📄 " + file.name;
+      const reader = new FileReader();
+      reader.onload = ev => { csvParsedText = "\nCSV DATA:\n" + ev.target.result.split("\n").slice(0,51).join("\n"); };
+      reader.readAsText(file);
+    }
+  });
+}
+
+async function submitAnalyze() {
+  const metricText = document.getElementById("analyze-input").value.trim();
+  if (!metricText) { document.getElementById("analyze-input").focus(); return; }
+  const btn = document.getElementById("analyze-submit-btn");
+  btn.disabled = true; btn.textContent = "⏳ Analyzing...";
+  closeAnalyzeModal();
+  const fullPrompt = "Analyze my ad performance: " + metricText + csvParsedText;
+  appendUserBubble("📊 Analyze: " + metricText.slice(0, 80) + (metricText.length > 80 ? "..." : ""));
+  const typingEl = appendTyping();
+  try {
+    const res = await fetch("/api/execute", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: fullPrompt, last_prompt: "" })
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    typingEl.remove();
+    if (data.status === "error") { appendBotBubble("❌ Error: " + (data.error || "Unknown")); return; }
+    appendAnalysisReport(data.response || "(empty)", data.steps);
+  } catch (err) { typingEl.remove(); appendBotBubble("❌ Error: " + err.message); }
+  finally {
+    btn.disabled = false; btn.textContent = "🔍 Analyze";
+    csvParsedText = "";
+    scrollBottom();
+  }
+}
+
+function appendAnalysisReport(text, steps) {
+  const box = document.createElement("div"); box.className = "analysis-report";
+  const header = document.createElement("div"); header.className = "analysis-header";
+  header.innerHTML = `<span>📊</span> ANALYSIS REPORT`;
+  const pre = document.createElement("pre"); pre.className = "analysis-pre"; pre.textContent = text;
+  const copyBtn = document.createElement("button"); copyBtn.className = "copy-btn";
+  copyBtn.textContent = "📋 Copy to clipboard";
+  copyBtn.onclick = () => { navigator.clipboard.writeText(text).then(() => { copyBtn.textContent = "✅ Copied!"; setTimeout(() => copyBtn.textContent = "📋 Copy to clipboard", 2000); }); };
+  box.appendChild(header); box.appendChild(pre); box.appendChild(copyBtn);
+
+  const stepsArr = Array.isArray(steps) ? steps : [];
+  const toggle = document.createElement("button"); toggle.className = "steps-toggle";
+  toggle.textContent = `▶ Show execution steps (${stepsArr.length})`;
+  const panel = document.createElement("div"); panel.className = "steps-panel"; panel.style.display = "none";
+  if (stepsArr.length) {
+    const container = document.createElement("div"); container.style.padding = "10px 12px";
+    stepsArr.forEach((s, i) => {
+      const d = document.createElement("details");
+      d.style.cssText = "border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin-bottom:8px;";
+      const sum = document.createElement("summary"); sum.style.cursor = "pointer";
+      sum.textContent = String(i+1).padStart(2,"0") + " — " + (s.module||"UnknownModule");
+      const pre2 = document.createElement("pre");
+      pre2.style.cssText = "margin-top:8px;font-size:.72rem;white-space:pre-wrap;color:var(--muted);";
+      pre2.textContent = JSON.stringify(s, null, 2);
+      d.appendChild(sum); d.appendChild(pre2); container.appendChild(d);
+    });
+    panel.appendChild(container);
+  }
+  toggle.onclick = () => { const o = panel.style.display !== "none"; panel.style.display = o ? "none" : "block"; toggle.textContent = (o?"▶":"▼") + ` Show execution steps (${stepsArr.length})`; };
+  box.appendChild(toggle); box.appendChild(panel);
+  chat().appendChild(box); scrollBottom();
 }
 
 async function callChat(prompt, state) {
@@ -228,6 +412,18 @@ function renderBotTurn(data) {
   if (uiType === "result") {
     const resultText = (data.response || data.message || "").trim();
     appendResult(resultText || "(empty response)", data.steps);
+    // After a wizard result, reset state to MENU and show options again
+    setTimeout(() => {
+      convState = { step: "MENU" };
+      appendBotBubble("✅ Done! What would you like to do next?");
+      appendOptions([
+        { id: "full_ad",       label: "✍️  Create Full Ad",         desc: "Headline + 5 bullets + description + keywords + publishing tips" },
+        { id: "headline_only", label: "🏷️  Create Headline Only",   desc: "One high-converting headline line" },
+        { id: "keywords_5",    label: "🔑  Get 5 Must-Use Keywords", desc: "Exactly 5 keywords/phrases to include in the headline" },
+        { id: "analyze_ad",    label: "📊  Analyze Ad Performance",  desc: "Paste your metrics or upload a CSV — get insights + a better headline" },
+      ], true);
+      updateNavButtons();
+    }, 300);
     return;
   }
   const msg = data.message || data.response || "";
@@ -320,5 +516,29 @@ function scrollBottom() { const c=chat(); requestAnimationFrame(()=>c.scrollTop=
 document.getElementById("user-input").addEventListener("input", function(){ this.style.height="44px"; this.style.height=Math.min(this.scrollHeight,120)+"px"; });
 updateNavButtons();
 </script>
+<!-- Analyze Ad Modal -->
+<div class="modal-overlay" id="analyze-modal">
+  <div class="modal-box">
+    <div class="modal-title">📊 Analyze Ad Performance</div>
+    <p style="font-size:.85rem;color:#6b2040;">Enter your metrics or upload a CSV — we compare against benchmarks and suggest improvements.</p>
+    <div>
+      <div class="modal-label">Describe your metrics or what to analyze</div>
+      <textarea class="modal-textarea" id="analyze-input" placeholder="e.g. My Facebook campaign: CTR=3%, ROI=2.5, conversion_rate=5%&#10;Or: analyze my ad performance and suggest a better headline"></textarea>
+    </div>
+    <div>
+      <div class="modal-label">Upload campaign CSV <span style="font-weight:400;color:#9ca3af">(optional)</span></div>
+      <label class="csv-drop" id="csv-drop-zone">
+        <input type="file" id="csv-file-input" accept=".csv" onchange="handleCsvSelect(this)">
+        <span id="csv-drop-text">Drag &amp; drop a CSV here or <strong>browse</strong></span>
+      </label>
+      <div class="csv-filename" id="csv-filename"></div>
+      <div class="modal-hint">Required columns: Campaign_ID, Clicks, Impressions, ROI, Conversion_Rate, Acquisition_Cost</div>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeAnalyzeModal()">Cancel</button>
+      <button class="modal-analyze-btn" id="analyze-submit-btn" onclick="submitAnalyze()">🔍 Analyze</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

@@ -5,6 +5,7 @@ MENU_ACTIONS: List[Dict[str, str]] = [
     {"id": "full_ad",       "label": "✍️  Create Full Ad",        "desc": "Headline + 5 bullets + description + keywords + publishing tips"},
     {"id": "headline_only", "label": "🏷️  Create Headline Only",  "desc": "One high-converting headline line"},
     {"id": "keywords_5",    "label": "🔑  Get 5 Must-Use Keywords","desc": "Exactly 5 keywords/phrases to include in the headline"},
+    {"id": "analyze_ad",    "label": "📊  Analyze Ad Performance", "desc": "Paste your metrics or upload a CSV — get insights + a better headline"},
 ]
 
 CATEGORY_TREE: List[Dict] = [
@@ -222,6 +223,22 @@ def process_message(user_input: str, state: Optional[Dict[str, Any]]) -> Tuple[D
                 "ready": False,
                 "agent_prompt": None,
             }
+        # Analyze mode — skip category/product, go straight to metric input
+        if text == "analyze_ad":
+            new_state = {**state, "step": "COLLECT_ANALYZE_INPUT", "action": text}
+            return new_state, {
+                "message": (
+                    "📊 **Analyze Ad Performance**\n\n"
+                    "Paste your campaign metrics below. For example:\n"
+                    "• CTR=5%, ROI=3.5, conversion_rate=6%, platform=Facebook\n"
+                    "• Or describe what happened: My Facebook campaign had a 3% CTR and 2.5 ROI\n\n"
+                    "You can also include a CSV summary (Campaign_ID, Clicks, Impressions, ROI, Conversion_Rate)."
+                ),
+                "ui_type": "input",
+                "options": None,
+                "ready": False,
+                "agent_prompt": None,
+            }
         new_state = {**state, "step": "COLLECT_CATEGORY", "action": text}
         return new_state, _payload_for_step(new_state)
 
@@ -263,7 +280,10 @@ def process_message(user_input: str, state: Optional[Dict[str, Any]]) -> Tuple[D
     # COLLECT_PRODUCT
     if step == "COLLECT_PRODUCT":
         if len(text) < 5:
-            return state, {"message": "Please describe your product in a bit more detail:", "ui_type": "input", "options": None, "ready": False, "agent_prompt": None}
+            return state, {
+                "message": "Please describe your product in a bit more detail:",
+                "ui_type": "input", "options": None, "ready": False, "agent_prompt": None,
+            }
         new_state = {**state, "step": "COLLECT_CONSTRAINTS", "product": text}
         return new_state, _payload_for_step(new_state)
 
@@ -307,5 +327,22 @@ def process_message(user_input: str, state: Optional[Dict[str, Any]]) -> Tuple[D
     if step == "GENERATE":
         new_state = {**_empty_state(), "step": "MENU"}
         return new_state, _payload_for_step(new_state)
+
+    # COLLECT_ANALYZE_INPUT -> GENERATE analyze
+    if step == "COLLECT_ANALYZE_INPUT":
+        if len(text) < 5:
+            return state, {
+                "message": "Please enter your campaign metrics or describe your ad performance:",
+                "ui_type": "input", "options": None, "ready": False, "agent_prompt": None,
+            }
+        new_state = {**state, "step": "GENERATE"}
+        agent_prompt = f"Analyze my ad performance: {text}"
+        return new_state, {
+            "message": "🔍 Analyzing your ad performance...",
+            "ui_type": "result",
+            "options": None,
+            "ready": True,
+            "agent_prompt": agent_prompt,
+        }
 
     return _empty_state(), _payload_for_step(_empty_state())
