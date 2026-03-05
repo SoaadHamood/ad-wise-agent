@@ -389,12 +389,16 @@ async function submitAnalyze() {
     if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
     typingEl.remove();
-    if (data.status === "error") { appendBotBubble("❌ Error: " + (data.error || "Unknown")); return; }
-    appendAnalysisReport(data.response || "(empty)", data.steps);
+    if (data.status === "error" || !data.response) {
+      appendBotBubble("❌ Analysis failed: " + (data.error || "No response from server. Make sure app/analyzer.py is deployed."));
+      return;
+    }
+    appendAnalysisReport(data.response, data.steps);
   } catch (err) { typingEl.remove(); appendBotBubble("❌ Error: " + err.message); }
   finally {
     btn.disabled = false; btn.textContent = "🔍 Analyze";
     csvParsedText = "";
+    document.getElementById("csv-file-input").value = "";
     scrollBottom();
   }
 }
