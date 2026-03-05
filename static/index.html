@@ -229,6 +229,11 @@ document.addEventListener("keydown", e => {
 });
 function chooseOption(id, label) {
   if (busy) return;
+  // Analyze option opens the full modal (CSV upload + metrics input)
+  if (id === "analyze_ad") {
+    openAnalyzeModal();
+    return;
+  }
   document.querySelectorAll(".opt-btn").forEach(b => b.disabled = true);
   appendUserBubble(label);
   callChat(id, convState);
@@ -389,11 +394,16 @@ async function submitAnalyze() {
     if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
     typingEl.remove();
-    if (data.status === "error" || !data.response) {
-      appendBotBubble("❌ Analysis failed: " + (data.error || "No response from server. Make sure app/analyzer.py is deployed."));
+    if (data.status === "error") {
+      appendBotBubble("❌ Analysis failed: " + (data.error || "Unknown error"));
       return;
     }
-    appendAnalysisReport(data.response, data.steps);
+    const reportText = (data.response || "").trim();
+    if (!reportText) {
+      appendBotBubble("❌ Analysis returned empty. Try adding more detail to your metrics, e.g. CTR=3%, ROI=2.5");
+      return;
+    }
+    appendAnalysisReport(reportText, data.steps);
   } catch (err) { typingEl.remove(); appendBotBubble("❌ Error: " + err.message); }
   finally {
     btn.disabled = false; btn.textContent = "🔍 Analyze";

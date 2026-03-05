@@ -378,20 +378,29 @@ def _build_analyze_messages(user_prompt: str, analysis_context: str) -> Tuple[st
         "Be specific, data-driven, and concise."
     )
 
+    benchmarks = (
+        "Industry benchmarks:\n"
+        "- CTR: 4.5% (good) / below 2% (poor)\n"
+        "- ROI: 3.2 (good) / below 1.5 (poor)\n"
+        "- Conversion Rate: 7% (good) / below 3% (poor)\n"
+        "- Acquisition Cost: under $15 (good) / above $25 (poor)\n"
+    )
+    context_block = f"{analysis_context}\n\n{benchmarks}" if analysis_context else benchmarks
+
     user_msg = (
         f"USER REQUEST:\n{user_prompt}\n\n"
-        f"{analysis_context}\n\n"
-        "Based on the performance data and benchmarks above, provide:\n\n"
+        f"{context_block}\n\n"
+        "Extract any metrics mentioned, compare against the benchmarks above, and provide:\n\n"
         "Performance Summary: <2-3 sentences on overall performance vs benchmark>\n"
         "Key Issues:\n"
-        "- <issue 1 with specific metric>\n"
-        "- <issue 2 with specific metric>\n"
-        "- <issue 3 with specific metric>\n"
+        "- <specific issue with metric and delta>\n"
+        "- <specific issue with metric and delta>\n"
+        "- <specific issue with metric and delta>\n"
         "Recommendations:\n"
         "- <actionable recommendation 1>\n"
         "- <actionable recommendation 2>\n"
         "- <actionable recommendation 3>\n"
-        "Suggested Headline: <improved headline based on what works in the benchmark data>\n"
+        "Suggested Headline: <one improved ad headline based on the data>\n"
     )
 
     return system_msg, user_msg
@@ -498,7 +507,19 @@ def run_agent(
                     "mode": mode,
                 },
             })
-            return _run_analyze_pipeline(prompt, steps, csv_path=csv_path)
+            # Try the full analyzer pipeline first; fall back to direct LLM if unavailable
+            try:
+                from app.analyzer import analyze_performance
+                return _run_analyze_pipeline(prompt, steps, csv_path=csv_path)
+            except ImportError:
+                pass
+            # Fallback: send directly to LLM with an analysis-focused system prompt
+            system_msg, user_msg = _build_analyze_messages(prompt, "")
+            llm_text, meta = llm_generate_ad(system_msg, user_msg)
+            steps.append({"module": "AdCopyWriter", "prompt": {"system": system_msg, "user": user_msg}, "response": meta})
+            final_text = (llm_text or "").strip()
+            steps.append({"module": "FinalResponseComposer", "prompt": {"mode": _MODE_ANALYZE}, "response": {"format_valid": bool(final_text)}})
+            return {"status": "ok", "error": None, "response": final_text, "steps": steps}
 
         # ── Ad generation modes (existing logic) ───────────────────
         from_wizard = ("RAG Category Filter:" in prompt) or ("Category:" in prompt) or ("Task:" in prompt)
