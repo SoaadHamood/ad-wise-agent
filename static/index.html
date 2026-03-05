@@ -101,6 +101,10 @@
   .csv-drop input { display:none; }
   .csv-filename { font-size:.78rem; color:#7c3aed; margin-top:6px; }
   .modal-hint { font-size:.73rem; color:#9ca3af; }
+  .csv-attached-badge { display:none; align-items:center; gap:6px; background:#f0fdf4; border:1.5px solid #86efac; border-radius:10px; padding:7px 12px; font-size:.82rem; font-weight:700; color:#15803d; margin-top:6px; }
+  .csv-attached-badge.visible { display:flex; }
+  .csv-attached-badge .badge-remove { margin-left:auto; cursor:pointer; color:#ef4444; font-size:.95rem; font-weight:900; line-height:1; padding:0 2px; }
+  .csv-attached-badge .badge-remove:hover { color:#b91c1c; }
   .modal-actions { display:flex; gap:10px; justify-content:flex-end; }
   .modal-cancel { background:#fff; border:1.5px solid #e5e7eb; color:#6b7280; padding:8px 18px; border-radius:10px; font-family:var(--font); font-size:.85rem; font-weight:600; cursor:pointer; }
   .modal-analyze-btn { background:linear-gradient(135deg,#6c3ff5,#a855f7); color:#fff; border:none; padding:8px 22px; border-radius:10px; font-family:var(--font); font-size:.88rem; font-weight:800; cursor:pointer; box-shadow:0 4px 16px rgba(108,63,245,.35); }
@@ -283,23 +287,40 @@ function closeAnalyzeModal() {
   document.getElementById("analyze-modal").classList.remove("open");
   document.getElementById("analyze-input").value = "";
   document.getElementById("csv-filename").textContent = "";
-  // NOTE: do NOT clear csv-file-input or csvParsedText here —
-  // submitAnalyze calls closeAnalyzeModal first, then reads the file.
-  // Clearing happens at the end of submitAnalyze instead.
+  // Reset the badge UI (but keep file input & csvParsedText — submitAnalyze clears those after use)
+  const badge = document.getElementById("csv-badge");
+  if (badge) badge.classList.remove("visible");
+  const dropText = document.getElementById("csv-drop-text");
+  if (dropText) dropText.innerHTML = "Drag &amp; drop a CSV here or <strong>browse</strong>";
 }
 // (modal close-on-backdrop moved to _initDropZone below)
 
 function handleCsvSelect(input) {
   const file = input.files[0];
   if (!file) return;
-  document.getElementById("csv-filename").textContent = "📄 " + file.name;
-  // Read immediately and store — also keep the file reference for submitAnalyze
+  document.getElementById("csv-filename").textContent = "";
+  _showCsvBadge(file.name);
   const reader = new FileReader();
   reader.onload = e => {
     const lines = e.target.result.split("\n").slice(0, 51);
     csvParsedText = "\nCSV DATA:\n" + lines.join("\n");
   };
   reader.readAsText(file);
+}
+
+function _showCsvBadge(name) {
+  const badge = document.getElementById("csv-badge");
+  const badgeName = document.getElementById("csv-badge-name");
+  if (badge && badgeName) { badgeName.textContent = name; badge.classList.add("visible"); }
+  const dropText = document.getElementById("csv-drop-text");
+  if (dropText) dropText.innerHTML = "✅ File selected — <strong>change file</strong>";
+}
+
+function removeCsvAttachment() {
+  document.getElementById("csv-file-input").value = "";
+  document.getElementById("csv-badge").classList.remove("visible");
+  document.getElementById("csv-drop-text").innerHTML = "Drag &amp; drop a CSV here or <strong>browse</strong>";
+  csvParsedText = "";
 }
 
 function _readFileAsText(file) {
@@ -329,6 +350,7 @@ function _initDropZone() {
       const reader = new FileReader();
       reader.onload = ev => { csvParsedText = "\nCSV DATA:\n" + ev.target.result.split("\n").slice(0,51).join("\n"); };
       reader.readAsText(file);
+      _showCsvBadge(file.name);
     }
   });
 }
@@ -353,7 +375,11 @@ async function submitAnalyze() {
   closeAnalyzeModal();
   document.getElementById("csv-file-input").value = "";
   const fullPrompt = "Analyze my ad performance: " + metricText + csvParsedText;
-  appendUserBubble("📊 Analyze: " + metricText.slice(0, 80) + (metricText.length > 80 ? "..." : ""));
+  const csvName = document.getElementById("csv-badge-name") && document.getElementById("csv-badge").classList.contains("visible")
+    ? document.getElementById("csv-badge-name").textContent : "";
+  const bubbleText = "📊 Analyze: " + metricText.slice(0, 60) + (metricText.length > 60 ? "..." : "")
+    + (csvName ? "  📎 " + csvName : "");
+  appendUserBubble(bubbleText);
   const typingEl = appendTyping();
   try {
     const res = await fetch("/api/execute", {
@@ -556,6 +582,10 @@ updateNavButtons();
         <span id="csv-drop-text">Drag &amp; drop a CSV here or <strong>browse</strong></span>
       </label>
       <div class="csv-filename" id="csv-filename"></div>
+      <div class="csv-attached-badge" id="csv-badge">
+        <span>📎</span> <span id="csv-badge-name">file.csv</span> <span style="font-weight:400;color:#166534">ready to analyze</span>
+        <span class="badge-remove" onclick="removeCsvAttachment()" title="Remove file">✕</span>
+      </div>
       <div class="modal-hint">Required columns: Campaign_ID, Clicks, Impressions, ROI, Conversion_Rate, Acquisition_Cost</div>
     </div>
     <div class="modal-actions">
