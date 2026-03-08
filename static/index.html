@@ -399,8 +399,9 @@ async function submitAnalyze() {
       return;
     }
     const reportText = (data.response || "").trim();
-    if (!reportText) {
-      appendBotBubble("❌ Analysis returned empty. Try adding more detail to your metrics, e.g. CTR=3%, ROI=2.5");
+    if (!reportText || reportText.length < 10) {
+      const errDetail = data.error ? ` (${data.error})` : "";
+      appendBotBubble("❌ Analysis returned empty" + errDetail + ". Try adding more detail, e.g. CTR=3%, ROI=2.5, conversion_rate=5%");
       return;
     }
     appendAnalysisReport(reportText, data.steps);
