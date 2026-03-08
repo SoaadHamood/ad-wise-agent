@@ -109,7 +109,7 @@
   .modal-cancel { background:#fff; border:1.5px solid #e5e7eb; color:#6b7280; padding:8px 18px; border-radius:10px; font-family:var(--font); font-size:.85rem; font-weight:600; cursor:pointer; }
   .modal-analyze-btn { background:linear-gradient(135deg,#6c3ff5,#a855f7); color:#fff; border:none; padding:8px 22px; border-radius:10px; font-family:var(--font); font-size:.88rem; font-weight:800; cursor:pointer; box-shadow:0 4px 16px rgba(108,63,245,.35); }
   .modal-analyze-btn:disabled { opacity:.45; cursor:not-allowed; }
-  .analysis-report { margin:8px 24px; background:#faf5ff; border:1.5px solid #d8b4fe; border-radius:var(--radius); overflow:hidden; animation:fadeIn .3s ease; }
+  .analysis-report { margin:8px 24px; background:#faf5ff; border:1.5px solid #d8b4fe; border-radius:var(--radius); overflow:visible; animation:fadeIn .3s ease; }
   .analysis-header { background:linear-gradient(90deg,#ede9fe,#faf5ff); padding:8px 18px; font-size:.78rem; font-weight:700; color:#6c3ff5; letter-spacing:.06em; text-transform:uppercase; border-bottom:1px solid #e9d5ff; display:flex; align-items:center; gap:8px; }
   .analysis-pre { font-family:var(--mono); font-size:.82rem; line-height:1.7; padding:16px 18px; white-space:pre-wrap; word-break:break-word; color:#1f0812; }
   </style>
@@ -399,9 +399,8 @@ async function submitAnalyze() {
       return;
     }
     const reportText = (data.response || "").trim();
-    if (!reportText || reportText.length < 10) {
-      const errDetail = data.error ? ` (${data.error})` : "";
-      appendBotBubble("❌ Analysis returned empty" + errDetail + ". Try adding more detail, e.g. CTR=3%, ROI=2.5, conversion_rate=5%");
+    if (!reportText) {
+      appendBotBubble("❌ Analysis returned empty. Try adding more detail to your metrics, e.g. CTR=3%, ROI=2.5");
       return;
     }
     appendAnalysisReport(reportText, data.steps);
