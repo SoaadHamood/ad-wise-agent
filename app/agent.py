@@ -283,30 +283,6 @@ def _repair_format(product_prompt: str, draft: str, mode: str) -> Tuple[str, Dic
     return llm_generate_ad(system_msg, user_msg)
 
 
-def _should_clarify(prompt: str) -> Tuple[bool, str]:
-    p = (prompt or "").strip()
-    if not p:
-        return True, "empty"
-    if len(p) < MIN_PROMPT_CHARS_FOR_AGENT:
-        return True, "too_short"
-
-    p_l = p.lower()
-    toks = re.findall(r"[a-z0-9]+", p_l)
-    meaningful = [t for t in toks if len(t) >= 2]
-
-    has_intent  = any(h in p_l for h in _INTENT_HINTS)
-    has_product = any(h in p_l for h in _PRODUCT_HINTS) or ("product:" in p_l)
-
-    if has_intent and not has_product:
-        return True, "missing_product"
-    if len(meaningful) < MIN_TOKENS_FOR_AGENT:
-        return (False, "") if has_product else (True, "too_few_tokens")
-    if not has_intent and not has_product:
-        return True, "no_intent_or_product"
-
-    return False, ""
-
-
 _CONTINUE_PHRASES = {"continue","just continue","go ahead","generate anyway","proceed","do it anyway","yes continue","yes","ok","sure"}
 
 def _is_continue_signal(prompt: str) -> bool:
@@ -446,7 +422,15 @@ def _run_analyze_pipeline(
 
     # Step: AdCopyWriter (analyze flavor)
     system_msg, user_msg = _build_analyze_messages(prompt, analysis.get("context_for_llm", ""))
-    llm_text, meta = llm_generate_ad(system_msg, user_msg)
+    try:
+        llm_text, meta = llm_generate_ad(system_msg, user_msg)
+    except Exception as llm_err:
+        return {
+            "status": "error",
+            "error": f"LLM call failed: {type(llm_err).__name__}: {llm_err}",
+            "response": None,
+            "steps": steps,
+        }
 
     steps.append({
         "module": "AdCopyWriter",
@@ -455,6 +439,14 @@ def _run_analyze_pipeline(
     })
 
     final_text = (llm_text or "").strip()
+
+    if not final_text:
+        return {
+            "status": "error",
+            "error": "LLM returned an empty response. Please try again with more detailed metrics.",
+            "response": None,
+            "steps": steps,
+        }
 
     steps.append({
         "module": "FinalResponseComposer",
@@ -515,9 +507,14 @@ def run_agent(
                 pass
             # Fallback: send directly to LLM with an analysis-focused system prompt
             system_msg, user_msg = _build_analyze_messages(prompt, "")
-            llm_text, meta = llm_generate_ad(system_msg, user_msg)
+            try:
+                llm_text, meta = llm_generate_ad(system_msg, user_msg)
+            except Exception as llm_err:
+                return {"status": "error", "error": f"LLM call failed: {type(llm_err).__name__}: {llm_err}", "response": None, "steps": steps}
             steps.append({"module": "AdCopyWriter", "prompt": {"system": system_msg, "user": user_msg}, "response": meta})
             final_text = (llm_text or "").strip()
+            if not final_text:
+                return {"status": "error", "error": "LLM returned an empty response. Please try again.", "response": None, "steps": steps}
             steps.append({"module": "FinalResponseComposer", "prompt": {"mode": _MODE_ANALYZE}, "response": {"format_valid": bool(final_text)}})
             return {"status": "ok", "error": None, "response": final_text, "steps": steps}
 
