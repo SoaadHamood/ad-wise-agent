@@ -40,9 +40,10 @@ ARCH_PNG   = STATIC_DIR / "architecture.png"
 INDEX_HTML = STATIC_DIR / "index.html"
 
 
-# REQUIRED: execute gets ONLY {"prompt": "..."}
+# REQUIRED: execute gets {"prompt": "..."} and optional last_prompt
 class ExecuteIn(BaseModel):
     prompt: str
+    last_prompt: Optional[str] = ""
 
 
 # Wizard UI endpoint input
@@ -71,7 +72,8 @@ def execute(inp: ExecuteIn):
                 rag_cat = line.split(":", 1)[1].strip()
                 break
 
-        agent_result = run_agent(prompt, category_filter=rag_cat)
+        last_prompt = (inp.last_prompt or "").strip()
+        agent_result = run_agent(prompt, category_filter=rag_cat, last_prompt=last_prompt)
 
         return {
             "status": agent_result.get("status", "ok"),
