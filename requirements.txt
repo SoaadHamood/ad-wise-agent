@@ -6,3 +6,4 @@ python-dotenv
 pydantic
 sentence-transformers
 pinecone[grpc]
+python-multipart
